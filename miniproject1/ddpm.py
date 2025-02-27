@@ -46,10 +46,12 @@ class DDPM(nn.Module):
         """
 
         ### Implement Algorithm 1 here ###
-        noise = torch.normal(torch.zeros_like(x),1)
-        t = torch.randint(1, self.T,(1,))
-        thing = self.alpha_cumprod[t]*x + torch.sqrt(1-self.alpha_cumprod[t]) * noise
-        pred_noise = self.network(thing,t)
+        sqrt_alpha_bar =  torch.sqrt(self.alpha_cumprod) # HINT: use torch.sqrt to calculate the sqrt of alphas_bar at timestep t
+        
+        noise = torch.normal(0,1,size=x.shape)
+        t = torch.randint(1, self.T,(x.shape[0],))
+        thing = sqrt_alpha_bar[t].unsqueeze(1) * x + torch.sqrt(1-sqrt_alpha_bar[t]).unsqueeze(1) * noise
+        pred_noise = self.network(thing,t.unsqueeze(1).float())
         neg_elbo = torch.mean((noise - pred_noise)**2)
 
         return neg_elbo
