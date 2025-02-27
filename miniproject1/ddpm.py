@@ -46,7 +46,11 @@ class DDPM(nn.Module):
         """
 
         ### Implement Algorithm 1 here ###
-        neg_elbo = 0
+        noise = torch.normal(torch.zeros_like(x),1)
+        thing = self.alpha_cumprod*x + torch.sqrt(1-self.alpha_cumprod) * noise
+        t = torch.randint(1, self.T,(1,))
+        pred_noise = self.network(thing,t)
+        neg_elbo = torch.mean((noise - pred_noise)**2)
 
         return neg_elbo
 
@@ -67,7 +71,11 @@ class DDPM(nn.Module):
         # Sample x_t given x_{t+1} until x_0 is sampled
         for t in range(self.T-1, -1, -1):
             ### Implement the remaining of Algorithm 2 here ###
-            pass
+            z = torch.normal(torch.zeros_like(x_t),1)
+            z[t < 1] = 0 
+            std = torch.sqrt(self.beta)
+            predicted_noise = self.network(x_t,t)
+            x_t =  1/torch.sqrt(self.alpha) * (x_t - (1-self.alpha)/(torch.sqrt(1-self.alpha_cumprod))*predicted_noise) + std*z # Calculate x_{t-1}, see line 4 of the Algorithm 2 (Sampling) at page 4 of the ddpm paper.
 
         return x_t
 
