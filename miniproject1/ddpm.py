@@ -48,8 +48,8 @@ class DDPM(nn.Module):
         ### Implement Algorithm 1 here ###
         noise = torch.normal(torch.zeros_like(x),1)
         t = torch.randint(1, self.T,(1,))
-        pred_noise = self.network(thing,t)
         thing = self.alpha_cumprod[t]*x + torch.sqrt(1-self.alpha_cumprod[t]) * noise
+        pred_noise = self.network(thing,t)
         neg_elbo = torch.mean((noise - pred_noise)**2)
 
         return neg_elbo
