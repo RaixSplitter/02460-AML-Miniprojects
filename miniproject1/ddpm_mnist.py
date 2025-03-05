@@ -50,15 +50,11 @@ class DDPM(nn.Module):
         """
 
         ### Implement Algorithm 1 here ###
-        sqrt_alpha_bar = torch.sqrt(
-            self.alpha_cumprod
-        )  # HINT: use torch.sqrt to calculate the sqrt of alphas_bar at timestep t
-
-        noise = torch.normal(0, 1, size=x.shape)
-        t = torch.randint(1, self.T, (x.shape[0],))
+        noise = torch.normal(mean=0, std=1, size=x.shape).to(x.device)
+        t = torch.randint(1, self.T, (x.shape[0],), device=x.device)
         thing = (
-            sqrt_alpha_bar[t].unsqueeze(1) * x
-            + torch.sqrt(1 - sqrt_alpha_bar[t]).unsqueeze(1) * noise
+            self.alpha_cumprod[t].unsqueeze(1) * x
+            + torch.sqrt(1 - self.alpha_cumprod[t]).unsqueeze(1) * noise
         )
         pred_noise = self.network(thing, t.unsqueeze(1).float())
         neg_elbo = torch.mean((noise - pred_noise) ** 2)
@@ -81,23 +77,26 @@ class DDPM(nn.Module):
 
         # Sample x_t given x_{t+1} until x_0 is sampled
         for t in range(self.T - 1, -1, -1):
+            t_tensor = torch.full((shape[0],), t, device=x_t.device)
+
             ### Implement the remaining of Algorithm 2 here ###
-            z = torch.normal(torch.zeros_like(x_t), 1)
-            z[t < 1] = 0
-            std = torch.sqrt(self.beta)
-            predicted_noise = self.network(x_t, t)
+            if t > 1:
+                z = torch.normal(mean=0, std=1, size=x_t.shape).to(x_t.device)
+            else:
+                z = torch.zeros_like(x_t)
+            std = torch.sqrt(self.beta[t_tensor].unsqueeze(1))
+            predicted_noise = self.network(x_t, t_tensor.unsqueeze(1).float())
             x_t = (
                 1
-                / torch.sqrt(self.alpha)
+                / torch.sqrt(self.alpha[t_tensor].unsqueeze(1))
                 * (
                     x_t
-                    - (1 - self.alpha)
-                    / (torch.sqrt(1 - self.alpha_cumprod))
+                    - (1 - self.alpha[t_tensor].unsqueeze(1))
+                    / (torch.sqrt(1 - self.alpha_cumprod[t_tensor].unsqueeze(1)))
                     * predicted_noise
                 )
                 + std * z
             )  # Calculate x_{t-1}, see line 4 of the Algorithm 2 (Sampling) at page 4 of the ddpm paper.
-
         return x_t
 
     def loss(self, x):
@@ -191,6 +190,7 @@ if __name__ == "__main__":
     import torch.utils.data
     from torchvision import datasets, transforms
     from torchvision.utils import save_image
+    import ToyData
 
     # Parse arguments
     import argparse
@@ -256,6 +256,7 @@ if __name__ == "__main__":
     for key, value in sorted(vars(args).items()):
         print(key, "=", value)
 
+    # Generate the data
     mnist_transform = transforms.Compose(
         [
             transforms.ToTensor(),
@@ -270,7 +271,6 @@ if __name__ == "__main__":
             data, target = super().__getitem__(index)
             return data
 
-    # Generate the data
     target_class = 0
     mnist = MNISTWithoutLabels(
         "data", train=True, download=True, transform=mnist_transform
@@ -281,12 +281,6 @@ if __name__ == "__main__":
     train_loader = torch.utils.data.DataLoader(
         mnist, batch_size=args.batch_size, shuffle=True
     )
-
-    # Plot the first batch of data
-    data_iter = iter(train_loader)
-    x = next(data_iter)
-    x = x.view(-1, 1, 28, 28)
-    save_image(x, "data.png", nrow=5)
 
     # Get the dimension of the dataset
     D = next(iter(train_loader)).shape[1]
@@ -318,19 +312,28 @@ if __name__ == "__main__":
 
         # Load the model
         model.load_state_dict(
-            torch.load(args.model, map_location=torch.device(args.device))
+            torch.load(
+                args.model, map_location=torch.device(args.device), weights_only=True
+            )
         )
 
         # Generate samples
         model.eval()
         with torch.no_grad():
-            samples = (model.sample((100, D))).cpu()
+            samples = (model.sample((30, D))).cpu()
 
         # Transform the samples back to the original space
-        samples = samples / 2 + 0.5
+        samples = samples /2 + 0.5
+        
+        
+        print(samples.shape)
+        print(samples[0])
+        print(f"Max value of first sample: {samples[0].max().item()}")
+        print(f"Min value of first sample: {samples[0].min().item()}")
 
-        # Plot the density of the toy data and the model samples
         # Plot mnist samples
-        samples = samples.view(-1, 1, 28, 28)
+        
         print(f"{args.samples}Epoch{args.epochs}.png")
-        save_image(samples, f"{args.samples}Epoch{args.epochs}Class{target_class}.png", nrow=10)
+        save_image(
+            samples, f"{args.samples}Epoch{args.epochs}Class{target_class}.png", nrow=10
+        )
