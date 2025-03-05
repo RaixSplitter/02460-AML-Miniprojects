@@ -15,4 +15,7 @@ flow_sample_cb:
 
 
 ddpm_train:
-	python miniproject1/ddpm.py train --model models/model_ddpm_mnist --samples samples_output/samples_ddpm_mnist --epochs 20 --batch-size 64
+	python miniproject1/ddpm_mnist.py train --model models/model_ddpm_mnist.pt --samples samples_output/samples_ddpm_mnist --epochs 1 --batch-size 64
+
+ddpm_sample:
+	python miniproject1/ddpm_mnist.py sample --model models/model_ddpm_mnist.pt --samples samples_output/samples_ddpm_mnist --epochs 1 --batch-size 64

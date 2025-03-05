@@ -327,78 +327,77 @@ if __name__ == "__main__":
             return data
 
     
-    
-    for target_class in range(0, 10):
-        mnist = MNISTWithoutLabels(
-        "data", train=True, download=True, transform=mnist_transform)
-        idx = torch.as_tensor(mnist.targets) == target_class
-        mnist = torch.utils.data.dataset.Subset(mnist, np.where(idx == 1)[0])
+    target_class = 0
+    mnist = MNISTWithoutLabels(
+    "data", train=True, download=True, transform=mnist_transform)
+    idx = torch.as_tensor(mnist.targets) == target_class
+    mnist = torch.utils.data.dataset.Subset(mnist, np.where(idx == 1)[0])
 
-        train_loader = torch.utils.data.DataLoader(
-            mnist, batch_size=args.batch_size, shuffle=True
+    train_loader = torch.utils.data.DataLoader(
+        mnist, batch_size=args.batch_size, shuffle=True
+    )
+
+    # Plot the first batch of data
+    data_iter = iter(train_loader)
+    x = next(data_iter)
+    x = x.view(-1, 1, 28, 28)
+    save_image(x, "data.png", nrow=5)
+
+    # Define prior distribution
+    D = 28 * 28
+    base = GaussianBase(D)
+
+    # Define transformations
+    transformations = []
+    mask = torch.Tensor(
+        [1 if (i + j) % 2 == 0 else 0 for i in range(28) for j in range(28)]
+    )
+
+    num_transformations = 10
+    num_hidden = 128
+
+    # Make a mask that is 1 for the first half of the features and 0 for the second half
+    mask = torch.zeros((D,))
+    mask[D // 2 :] = 1
+
+    for i in range(num_transformations):
+        mask = 1 - mask  # Flip the mask
+        scale_net = nn.Sequential(
+            nn.Linear(D, num_hidden), nn.ReLU(), nn.Linear(num_hidden, D), nn.Tanh()
+        )
+        translation_net = nn.Sequential(
+            nn.Linear(D, num_hidden), nn.ReLU(), nn.Linear(num_hidden, D), nn.Tanh()
+        )
+        transformations.append(MaskedCouplingLayer(scale_net, translation_net, mask))
+
+    # Define flow model
+    model = Flow(base, transformations).to(args.device)
+
+    # Choose mode to run
+    if args.mode == "train":
+        # Define optimizer
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+
+        # Train model
+        train(model, optimizer, train_loader, args.epochs, args.device)
+
+        # Save model
+        torch.save(model.state_dict(), f"{args.model}Class{target_class}.pt")
+
+    elif args.mode == "sample":
+
+        model.load_state_dict(
+            torch.load(
+                f"{args.model}Class{target_class}.pt", map_location=torch.device(args.device), weights_only=True
+            )
         )
 
-        # Plot the first batch of data
-        data_iter = iter(train_loader)
-        x = next(data_iter)
-        x = x.view(-1, 1, 28, 28)
-        save_image(x, "data.png", nrow=5)
+        # Generate samples
+        model.eval()
+        with torch.no_grad():
+            samples = (model.sample((100,))).cpu()
 
-        # Define prior distribution
-        D = 28 * 28
-        base = GaussianBase(D)
-
-        # Define transformations
-        transformations = []
-        mask = torch.Tensor(
-            [1 if (i + j) % 2 == 0 else 0 for i in range(28) for j in range(28)]
-        )
-
-        num_transformations = 10
-        num_hidden = 128
-
-        # Make a mask that is 1 for the first half of the features and 0 for the second half
-        mask = torch.zeros((D,))
-        mask[D // 2 :] = 1
-
-        for i in range(num_transformations):
-            mask = 1 - mask  # Flip the mask
-            scale_net = nn.Sequential(
-                nn.Linear(D, num_hidden), nn.ReLU(), nn.Linear(num_hidden, D), nn.Tanh()
-            )
-            translation_net = nn.Sequential(
-                nn.Linear(D, num_hidden), nn.ReLU(), nn.Linear(num_hidden, D), nn.Tanh()
-            )
-            transformations.append(MaskedCouplingLayer(scale_net, translation_net, mask))
-
-        # Define flow model
-        model = Flow(base, transformations).to(args.device)
-
-        # Choose mode to run
-        if args.mode == "train":
-            # Define optimizer
-            optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-
-            # Train model
-            train(model, optimizer, train_loader, args.epochs, args.device)
-
-            # Save model
-            torch.save(model.state_dict(), f"{args.model}Class{target_class}.pt")
-
-        elif args.mode == "sample":
-
-            model.load_state_dict(
-                torch.load(
-                    f"{args.model}Class{target_class}.pt", map_location=torch.device(args.device), weights_only=True
-                )
-            )
-
-            # Generate samples
-            model.eval()
-            with torch.no_grad():
-                samples = (model.sample((100,))).cpu()
-
-            # Plot mnist samples
-            samples = samples.view(-1, 1, 28, 28)
-            print(f"{args.samples}Epoch{args.epochs}.png")
-            save_image(samples, f"{args.samples}Epoch{args.epochs}Class{target_class}.png", nrow=10)
+        # Plot mnist samples
+        samples = samples.view(-1, 1, 28, 28)
+        print(f"{args.samples}Epoch{args.epochs}.png")
+        save_image(samples, f"{args.samples}Epoch{args.epochs}Class{target_class}.png", nrow=10)
