@@ -150,6 +150,27 @@ def train(model, optimizer, data_loader, epochs, device):
                 loss=f"⠀{loss.item():12.4f}", epoch=f"{epoch+1}/{epochs}"
             )
             progress_bar.update()
+        
+        if epoch % 5 == 0:
+            torch.save(model.state_dict(), f"models/Checkpoint_model_epoch{epoch}.pt")
+            model.eval()
+            with torch.no_grad():
+                samples = (model.sample((30, D))).cpu()
+
+            # Transform the samples back to the original space
+            samples = samples /2 + 0.5
+            
+            # Convert samples back into values between 0 and 1
+            samples = samples.view(-1, 1, 28, 28)
+            # samples = (samples - samples.min()) / (samples.max() - samples.min())
+
+            # Plot mnist samples
+            
+            save_image(
+                samples, f"samples_output/Checkpoint_Epoch{epoch}.png", nrow=10
+            )
+            
+            model.train()
 
 
 class FcNetwork(nn.Module):
@@ -191,6 +212,7 @@ if __name__ == "__main__":
     from torchvision import datasets, transforms
     from torchvision.utils import save_image
     import ToyData
+    import unet
 
     # Parse arguments
     import argparse
@@ -287,7 +309,8 @@ if __name__ == "__main__":
 
     # Define the network
     num_hidden = 64
-    network = FcNetwork(D, num_hidden)
+    # network = FcNetwork(D, num_hidden)
+    network = unet.Unet()
 
     # Set the number of steps in the diffusion process
     T = 1000
@@ -324,6 +347,10 @@ if __name__ == "__main__":
 
         # Transform the samples back to the original space
         samples = samples /2 + 0.5
+        
+        # Convert samples back into values between 0 and 1
+        samples = samples.view(-1, 1, 28, 28)
+        # samples = (samples - samples.min()) / (samples.max() - samples.min())
         
         
         print(samples.shape)
