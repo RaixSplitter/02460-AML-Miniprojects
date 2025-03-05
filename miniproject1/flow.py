@@ -235,7 +235,7 @@ if __name__ == "__main__":
     import torch.utils.data
     from torchvision import datasets, transforms
     from torchvision.utils import save_image
-    import week3.ToyData as ToyData
+    import ToyData as ToyData
 
     # Parse arguments
     import argparse
