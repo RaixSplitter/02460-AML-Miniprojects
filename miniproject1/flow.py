@@ -59,33 +59,43 @@ class MaskedCouplingLayer(nn.Module):
         Transform a batch of data through the coupling layer (from the base to data).
 
         Parameters:
-        x: [torch.Tensor]
+        z: [torch.Tensor]
             The input to the transformation of dimension `(batch_size, feature_dim)`
         Returns:
-        z: [torch.Tensor]
+        zp: [torch.Tensor]
             The output of the transformation of dimension `(batch_size, feature_dim)`
         sum_log_det_J: [torch.Tensor]
             The sum of the log determinants of the Jacobian matrices of the forward transformations of dimension `(batch_size, feature_dim)`.
         """
-        x = z
-        log_det_J = torch.zeros(z.shape[0])
-        return x, log_det_J
-    
-    def inverse(self, x):
+
+        _z = z * self.mask
+        s = self.scale_net(_z)
+        t = self.translation_net(_z)
+
+        zp = _z + (1 - self.mask) * (z * torch.exp(s) + t)
+        log_det_J = torch.sum(s, dim=1)
+
+        return zp, log_det_J
+
+    def inverse(self, zp):
         """
         Transform a batch of data through the coupling layer (from data to the base).
 
         Parameters:
-        z: [torch.Tensor]
+        zp: [torch.Tensor]
             The input to the inverse transformation of dimension `(batch_size, feature_dim)`
         Returns:
-        x: [torch.Tensor]
+        z: [torch.Tensor]
             The output of the inverse transformation of dimension `(batch_size, feature_dim)`
         sum_log_det_J: [torch.Tensor]
             The sum of the log determinants of the Jacobian matrices of the inverse transformations.
         """
-        z = x
-        log_det_J = torch.zeros(x.shape[0])
+        _z = zp * self.mask
+        s = self.scale_net(_z)
+        t = self.translation_net(_z)
+        z = _z + (1 - self.mask) * ((zp - t) * torch.exp(-s))
+
+        log_det_J = torch.sum(s * (1 - self.mask), dim=1)
         return z, log_det_J
 
 
@@ -225,7 +235,7 @@ if __name__ == "__main__":
     import torch.utils.data
     from torchvision import datasets, transforms
     from torchvision.utils import save_image
-    import ToyData
+    import week3.ToyData as ToyData
 
     # Parse arguments
     import argparse
@@ -235,7 +245,7 @@ if __name__ == "__main__":
     parser.add_argument('--model', type=str, default='model.pt', help='file to save model to or load model from (default: %(default)s)')
     parser.add_argument('--samples', type=str, default='samples.png', help='file to save samples in (default: %(default)s)')
     parser.add_argument('--device', type=str, default='cpu', choices=['cpu', 'cuda', 'mps'], help='torch device (default: %(default)s)')
-    parser.add_argument('--batch-size', type=int, default=10000, metavar='N', help='batch size for training (default: %(default)s)')
+    parser.add_argument('--batch-size', type=int, default=10_000, metavar='N', help='batch size for training (default: %(default)s)')
     parser.add_argument('--epochs', type=int, default=1, metavar='N', help='number of epochs to train (default: %(default)s)')
     parser.add_argument('--lr', type=float, default=1e-3, metavar='V', help='learning rate for training (default: %(default)s)')
 
@@ -245,7 +255,7 @@ if __name__ == "__main__":
         print(key, '=', value)
 
     # Generate the data
-    n_data = 10000000
+    n_data = 10_000_000
     toy = {'tg': ToyData.TwoGaussians, 'cb': ToyData.Chequerboard}[args.data]()
     train_loader = torch.utils.data.DataLoader(toy().sample((n_data,)), batch_size=args.batch_size, shuffle=True)
     test_loader = torch.utils.data.DataLoader(toy().sample((n_data,)), batch_size=args.batch_size, shuffle=True)
