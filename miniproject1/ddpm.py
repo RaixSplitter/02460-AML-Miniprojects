@@ -46,13 +46,11 @@ class DDPM(nn.Module):
         """
 
         ### Implement Algorithm 1 here ###
-        sqrt_alpha_bar =  torch.sqrt(self.alpha_cumprod) # HINT: use torch.sqrt to calculate the sqrt of alphas_bar at timestep t
-        
-        noise = torch.normal(0,1,size=x.shape)
-        t = torch.randint(1, self.T,(x.shape[0],))
-        thing = sqrt_alpha_bar[t].unsqueeze(1) * x + torch.sqrt(1-sqrt_alpha_bar[t]).unsqueeze(1) * noise
-        pred_noise = self.network(thing,t.unsqueeze(1).float())
-        neg_elbo = torch.mean((noise - pred_noise)**2)
+        noise = torch.normal(mean=0, std=1, size=x.shape).to(x.device)
+        t = torch.randint(1, self.T, (x.shape[0],), device=x.device)
+        thing = self.alpha_cumprod[t].unsqueeze(1) * x + torch.sqrt(1 - self.alpha_cumprod[t]).unsqueeze(1) * noise
+        pred_noise = self.network(thing, t.unsqueeze(1).float())
+        neg_elbo = torch.mean((noise - pred_noise) ** 2)
 
         return neg_elbo
 
@@ -72,13 +70,16 @@ class DDPM(nn.Module):
 
         # Sample x_t given x_{t+1} until x_0 is sampled
         for t in range(self.T-1, -1, -1):
+            t_tensor = torch.full((shape[0], ), t, device=x_t.device)
+            
             ### Implement the remaining of Algorithm 2 here ###
-            z = torch.normal(torch.zeros_like(x_t),1)
-            z[t < 1] = 0 
-            std = torch.sqrt(self.beta)
-            predicted_noise = self.network(x_t,t)
-            x_t =  1/torch.sqrt(self.alpha) * (x_t - (1-self.alpha)/(torch.sqrt(1-self.alpha_cumprod))*predicted_noise) + std*z # Calculate x_{t-1}, see line 4 of the Algorithm 2 (Sampling) at page 4 of the ddpm paper.
-
+            if t > 1:
+                z = torch.normal(mean=0, std=1, size=x_t.shape).to(x_t.device)
+            else:
+                z = torch.zeros_like(x_t)
+            std = torch.sqrt(self.beta[t_tensor].unsqueeze(1))
+            predicted_noise = self.network(x_t,t_tensor.unsqueeze(1).float())
+            x_t =  1/torch.sqrt(self.alpha[t_tensor].unsqueeze(1)) * (x_t - (1-self.alpha[t_tensor].unsqueeze(1))/(torch.sqrt(1-self.alpha_cumprod[t_tensor].unsqueeze(1)))*predicted_noise) + std*z # Calculate x_{t-1}, see line 4 of the Algorithm 2 (Sampling) at page 4 of the ddpm paper.
         return x_t
 
     def loss(self, x):
