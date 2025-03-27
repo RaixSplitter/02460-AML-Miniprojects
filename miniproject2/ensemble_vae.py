@@ -444,9 +444,15 @@ if __name__ == "__main__":
         model.load_state_dict(torch.load(args.experiment_folder + "/model.pt"))
         model.eval()
         with torch.no_grad():
+            latents = np.empty((0,2))
+            labels = np.empty((1))
             for x, y in mnist_test_loader:
                 x = x.to(device)
                 latent = model.get_latent(x)
-                torch.save(latent, args.experiment_folder+"/latent.pt")
                 latent_numpy = latent.numpy()
-                np.save(args.experiment_folder+"/latent.npy",latent_numpy)
+                latents = np.concatenate((latents, latent_numpy),axis=0)
+                labels = np.concatenate((labels, y.numpy()),axis=0)
+
+            torch.save(latent, args.experiment_folder+"/latent.pt")
+            np.save(args.experiment_folder+"/latent.npy",latents)
+            np.save(args.experiment_folder+"/labels.npy",labels)
