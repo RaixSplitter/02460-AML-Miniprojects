@@ -450,7 +450,7 @@ if __name__ == "__main__":
             latent = model.get_latent(x)
             
             n =latent.shape[0]
-            samples = np.linspace(0, 1, 10)
+            samples = np.linspace(0, 1, 50)
 
 
             combinations = list(itertools.combinations(range(n), 2))
@@ -461,21 +461,31 @@ if __name__ == "__main__":
             
             for pair in chosen_pairs:
     
-                points = [get_curve(t, pair[0, :], pair[1, :]) for t in samples]
-                print(len(points))
-                points = points[1:-1]
+                curve = [get_curve(t, pair[0, :], pair[1, :]) for t in samples]
+                points = curve[1:-1]
                 print(len(points))
                 print(points)
                 points = torch.stack(points)
                 points.requires_grad = True
                 
                 
+                f_curve = model.decoder(points).sample()
                 
-                loss = energy_curve(points, model.decoder)
+                
+                loss = energy_curve(f_curve)
+                loss.requires_grad = True
                 
                 loss.backward()
                 
-                plt.plot(points[:, 0], points[:, 1], color='blue')
+                new_points = model.encoder(f_curve).rsample()
+                new_points = new_points.detach().numpy()
+                # new_points = np.concatenate([pair[0, :], new_points, pair[1, :]])
+                
+                new_points = np.concatenate([pair[0, :].unsqueeze(0).detach().numpy(), new_points, pair[1, :].unsqueeze(0).detach().numpy()])
+                
+                plt.plot(new_points[:, 0], new_points[:, 1], color='red')
+                
+                plt.plot(np.array(curve)[:, 0], np.array(curve)[:, 1], color='blue')
             plt.show()
 
             
