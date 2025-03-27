@@ -444,49 +444,47 @@ if __name__ == "__main__":
         ).to(device)
         model.load_state_dict(torch.load(args.experiment_folder + "/model.pt"))
         model.eval()
+
         with torch.no_grad():
             x, y = next(iter(mnist_test_loader))
             x = x.to(device)
             latent = model.get_latent(x)
-            
-            n =latent.shape[0]
-            samples = np.linspace(0, 1, 50)
 
+        n =latent.shape[0]
+        combinations = list(itertools.combinations(range(n), 2))
+        chosen_idx_pairs = random.choices(combinations, k=1)
+        chosen_pairs = [(latent[i], latent[j]) for (i, j) in chosen_idx_pairs]
 
-            combinations = list(itertools.combinations(range(n), 2))
-            chosen_idx_pairs = random.choices(combinations, k=1)
-            chosen_pairs = [latent[idx, :] for idx in chosen_idx_pairs]
-            
-            plt.scatter(latent[:, 0], latent[:, 1], c=y, cmap='viridis')
-            
-            for pair in chosen_pairs:
-    
-                curve = [get_curve(t, pair[0, :], pair[1, :]) for t in samples]
-                points = curve[1:-1]
-                print(len(points))
-                print(points)
-                points = torch.stack(points)
-                points.requires_grad = True
-                
-                
-                f_curve = model.decoder(points).sample()
-                
-                
-                loss = energy_curve(f_curve)
-                loss.requires_grad = True
-                
-                loss.backward()
-                
-                new_points = model.encoder(f_curve).rsample()
-                new_points = new_points.detach().numpy()
-                # new_points = np.concatenate([pair[0, :], new_points, pair[1, :]])
-                
-                new_points = np.concatenate([pair[0, :].unsqueeze(0).detach().numpy(), new_points, pair[1, :].unsqueeze(0).detach().numpy()])
-                
-                plt.plot(new_points[:, 0], new_points[:, 1], color='red')
-                
-                plt.plot(np.array(curve)[:, 0], np.array(curve)[:, 1], color='blue')
-            plt.show()
+        plt.scatter(latent[:, 0].cpu(), latent[:, 1].cpu(), c=y, cmap='viridis')
 
-            
-            
+        for (z_start, z_end) in chosen_pairs:
+            samples = np.linspace(0, 1, 30)
+            path_init = [(1 - t) * z_start + t * z_end for t in samples]
+            path_init = torch.stack(path_init).to(device)  # shape [30, 2]
+
+            path_z = torch.nn.Parameter(path_init.clone(), requires_grad=True)
+
+            optimizer = torch.optim.Adam([path_z], lr=1e-2)
+
+            steps = 5
+            for step_i in range(steps):
+                optimizer.zero_grad()
+
+                with torch.no_grad():
+                    path_z.data[0] = z_start  # fix start
+                    path_z.data[-1] = z_end   # fix end
+
+                # E = sum_{i} (z_{i+1} - z_i)^T g(z_i) (z_{i+1} - z_i)
+                E = energy_curve_with_metric(path_z, model.decoder)
+                E.backward()
+
+                optimizer.step()
+
+            with torch.no_grad():
+                path_z.data[0] = z_start
+                path_z.data[-1] = z_end
+
+            geodesic_coords = path_z.detach().cpu().numpy()
+            plt.plot(geodesic_coords[:, 0], geodesic_coords[:, 1], '-r')
+
+        plt.show()

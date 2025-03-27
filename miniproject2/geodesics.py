@@ -29,3 +29,31 @@ def get_curve(t, point1, point2, W = np.random.randn(K) * M) -> torch.tensor:
 def energy_curve(curve): #Monte Carlo Energy
     n_samples = curve.shape[0] 
     return torch.sum(torch.stack([torch.norm(curve  [idx+1] - curve   [idx]) ** 2 for idx in range(n_samples - 1)])) / n_samples
+
+def energy_curve_with_metric(curve_z, decoder):
+    total_energy = torch.tensor(0., device=curve_z.device, dtype=curve_z.dtype)
+
+    for i in range(curve_z.shape[0] - 1):
+        z_i = curve_z[i].unsqueeze(0)  # shape [1,2]
+        z_next = curve_z[i+1].unsqueeze(0)
+        delta = (z_next - z_i).squeeze(0)
+
+        x_i = decoder(z_i).mean.view(1, -1)
+
+        # Build the Jacobian of x_i wrt z_i
+        J_rows = []
+        for out_idx in range(x_i.shape[1]):
+            grad_out = torch.autograd.grad(
+                x_i[0, out_idx],
+                z_i,
+                retain_graph=True
+            )[0]  # shape [1,2]
+            J_rows.append(grad_out)
+        J_f = torch.cat(J_rows, dim=0)  # shape [784,2]
+
+        g_i = J_f.t() @ J_f  # shape [2,2]
+
+        seg_energy = delta @ g_i @ delta
+        total_energy += seg_energy
+
+    return total_energy
