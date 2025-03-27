@@ -131,6 +131,9 @@ class VAE(nn.Module):
             self.decoder(z).log_prob(x) - q.log_prob(z) + self.prior().log_prob(z)
         )
         return elbo
+    
+    def get_latent(self, x):
+        return self.encoder(x)
 
     def sample(self, n_samples=1):
         """
@@ -340,10 +343,10 @@ if __name__ == "__main__":
     def new_encoder():
         encoder_net = nn.Sequential(
             nn.Conv2d(1, 16, 3, stride=2, padding=1),
-            nn.Softmax(),
+            nn.Softmax(M),
             nn.BatchNorm2d(16),
             nn.Conv2d(16, 32, 3, stride=2, padding=1),
-            nn.Softmax(),
+            nn.Softmax(M),
             nn.BatchNorm2d(32),
             nn.Conv2d(32, 32, 3, stride=2, padding=1),
             nn.Flatten(),
@@ -439,3 +442,8 @@ if __name__ == "__main__":
         ).to(device)
         model.load_state_dict(torch.load(args.experiment_folder + "/model.pt"))
         model.eval()
+        with torch.no_grad():
+            for x, y in mnist_test_loader:
+                x = x.to(device)
+                latent = model.get_latent(x)
+                torch.save(latent, args.experiment_folder+"/latent.pt")
