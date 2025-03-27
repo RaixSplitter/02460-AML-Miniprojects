@@ -445,7 +445,7 @@ if __name__ == "__main__":
         model.eval()
         with torch.no_grad():
             latents = np.empty((0,2))
-            labels = np.empty((1))
+            labels = np.empty((0))
             for x, y in mnist_test_loader:
                 x = x.to(device)
                 latent = model.get_latent(x)
