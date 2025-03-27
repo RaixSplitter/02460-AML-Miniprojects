@@ -19,3 +19,7 @@ ddpm_train:
 
 ddpm_sample:
 	python miniproject1/ddpm_mnist.py sample --model models/model_ddpm_mnist.pt --samples samples_output/samples_ddpm_mnist --epochs 50 --batch-size 64
+
+
+run_geo:
+	python miniproject2/ensemble_vae.py geodesics

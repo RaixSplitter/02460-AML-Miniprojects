@@ -16,6 +16,7 @@ import os
 import math
 import matplotlib.pyplot as plt
 import numpy as np
+from geodesics import *
 
 class GaussianPrior(nn.Module):
     def __init__(self, M):
@@ -444,15 +445,38 @@ if __name__ == "__main__":
         model.load_state_dict(torch.load(args.experiment_folder + "/model.pt"))
         model.eval()
         with torch.no_grad():
-            latents = np.empty((0,2))
-            labels = np.empty((0))
-            for x, y in mnist_test_loader:
-                x = x.to(device)
-                latent = model.get_latent(x)
-                latent_numpy = latent.numpy()
-                latents = np.concatenate((latents, latent_numpy),axis=0)
-                labels = np.concatenate((labels, y.numpy()),axis=0)
+            x, y = next(iter(mnist_test_loader))
+            x = x.to(device)
+            latent = model.get_latent(x)
+            
+            n =latent.shape[0]
+            samples = np.linspace(0, 1, 10)
 
-            torch.save(latent, args.experiment_folder+"/latent.pt")
-            np.save(args.experiment_folder+"/latent.npy",latents)
-            np.save(args.experiment_folder+"/labels.npy",labels)
+
+            combinations = list(itertools.combinations(range(n), 2))
+            chosen_idx_pairs = random.choices(combinations, k=1)
+            chosen_pairs = [latent[idx, :] for idx in chosen_idx_pairs]
+            
+            plt.scatter(latent[:, 0], latent[:, 1], c=y, cmap='viridis')
+            
+            for pair in chosen_pairs:
+    
+                points = [get_curve(t, pair[0, :], pair[1, :]) for t in samples]
+                print(len(points))
+                points = points[1:-1]
+                print(len(points))
+                print(points)
+                points = torch.stack(points)
+                points.requires_grad = True
+                
+                
+                
+                loss = energy_curve(points, model.decoder)
+                
+                loss.backwards()
+                
+                plt.plot(points[:, 0], points[:, 1], color='blue')
+            plt.show()
+
+            
+            
