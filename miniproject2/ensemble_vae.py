@@ -473,7 +473,7 @@ if __name__ == "__main__":
                 
                 loss = energy_curve(points, model.decoder)
                 
-                loss.backwards()
+                loss.backward()
                 
                 plt.plot(points[:, 0], points[:, 1], color='blue')
             plt.show()

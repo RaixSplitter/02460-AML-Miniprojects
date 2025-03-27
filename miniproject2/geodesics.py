@@ -29,7 +29,5 @@ def get_curve(t, point1, point2, W = np.random.randn(K) * M) -> torch.tensor:
 def energy_curve(curve, decoder): #Monte Carlo Energy
     energy = 0
     n_samples = curve.shape[0] 
-    print(curve[0])
-    print(decoder(curve))
-    print("Din mor er en decoder")
-    return torch.sum([torch.norm(decoder(curve[idx+1]) - decoder(curve[idx])) ** 2 for idx in range(n_samples - 1)]) / n_samples
+    f_curve = decoder(curve).sample()
+    return torch.sum(torch.stack([torch.norm(f_curve[idx+1] - f_curve[idx]) ** 2 for idx in range(n_samples - 1)])) / n_samples
