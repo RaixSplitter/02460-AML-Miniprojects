@@ -15,6 +15,7 @@ from copy import deepcopy
 import os
 import math
 import matplotlib.pyplot as plt
+import numpy as np
 
 class GaussianPrior(nn.Module):
     def __init__(self, M):
@@ -133,7 +134,7 @@ class VAE(nn.Module):
         return elbo
     
     def get_latent(self, x):
-        return self.encoder(x)
+        return self.encoder(x).rsample()
 
     def sample(self, n_samples=1):
         """
@@ -447,3 +448,5 @@ if __name__ == "__main__":
                 x = x.to(device)
                 latent = model.get_latent(x)
                 torch.save(latent, args.experiment_folder+"/latent.pt")
+                latent_numpy = latent.numpy()
+                np.save(args.experiment_folder+"/latent.npy",latent_numpy)
