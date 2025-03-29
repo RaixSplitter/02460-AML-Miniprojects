@@ -17,6 +17,8 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 from geodesics import *
+from tqdm import tqdm
+
 
 class GaussianPrior(nn.Module):
     def __init__(self, M):
@@ -360,13 +362,13 @@ if __name__ == "__main__":
         decoder_net = nn.Sequential(
             nn.Linear(M, 512),
             nn.Unflatten(-1, (32, 4, 4)),
-            nn.Softmax(),
+            nn.Softmax(M),
             nn.BatchNorm2d(32),
             nn.ConvTranspose2d(32, 32, 3, stride=2, padding=1, output_padding=0),
-            nn.Softmax(),
+            nn.Softmax(M),
             nn.BatchNorm2d(32),
             nn.ConvTranspose2d(32, 16, 3, stride=2, padding=1, output_padding=1),
-            nn.Softmax(),
+            nn.Softmax(M),
             nn.BatchNorm2d(16),
             nn.ConvTranspose2d(16, 1, 3, stride=2, padding=1, output_padding=1),
         )
@@ -442,7 +444,7 @@ if __name__ == "__main__":
             GaussianDecoder(new_decoder()),
             GaussianEncoder(new_encoder()),
         ).to(device)
-        model.load_state_dict(torch.load(args.experiment_folder + "/model.pt"))
+        model.load_state_dict(torch.load(args.experiment_folder + "/model.pt", weights_only=True))
         model.eval()
 
         with torch.no_grad():
@@ -457,6 +459,9 @@ if __name__ == "__main__":
 
         plt.scatter(latent[:, 0].cpu(), latent[:, 1].cpu(), c=y, cmap='viridis')
 
+    
+        steps = 5
+        pbar = tqdm(total=len(chosen_pairs)*steps, desc="Geodesics")
         for (z_start, z_end) in chosen_pairs:
             samples = np.linspace(0, 1, 30)
             path_init = [(1 - t) * z_start + t * z_end for t in samples]
@@ -464,9 +469,10 @@ if __name__ == "__main__":
 
             path_z = torch.nn.Parameter(path_init.clone(), requires_grad=True)
 
-            optimizer = torch.optim.Adam([path_z], lr=1e-2)
+            optimizer = torch.optim.Adam([path_z], lr=1e-1)
 
-            steps = 5
+            
+            pbar.set_description(f"Geodesics: Starting optimization")
             for step_i in range(steps):
                 optimizer.zero_grad()
 
@@ -479,6 +485,11 @@ if __name__ == "__main__":
                 E.backward()
 
                 optimizer.step()
+                pbar.set_description(
+                    f"Geodesics: {step_i}/{steps}"
+                )
+                pbar.update(1)
+                
 
             with torch.no_grad():
                 path_z.data[0] = z_start
@@ -486,5 +497,6 @@ if __name__ == "__main__":
 
             geodesic_coords = path_z.detach().cpu().numpy()
             plt.plot(geodesic_coords[:, 0], geodesic_coords[:, 1], '-r')
+            
 
         plt.show()
