@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from geodesics import *
 from tqdm import tqdm
-
+import pickle
 
 class GaussianPrior(nn.Module):
     def __init__(self, M):
@@ -454,13 +454,13 @@ if __name__ == "__main__":
 
         n =latent.shape[0]
         combinations = list(itertools.combinations(range(n), 2))
-        chosen_idx_pairs = random.choices(combinations, k=1)
+        chosen_idx_pairs = random.choices(combinations, k=30)
         chosen_pairs = [(latent[i], latent[j]) for (i, j) in chosen_idx_pairs]
 
         plt.scatter(latent[:, 0].cpu(), latent[:, 1].cpu(), c=y, cmap='viridis')
 
-    
-        steps = 5
+        geodesic_coords_saved = []
+        steps = 1000
         pbar = tqdm(total=len(chosen_pairs)*steps, desc="Geodesics")
         for (z_start, z_end) in chosen_pairs:
             samples = np.linspace(0, 1, 30)
@@ -486,7 +486,7 @@ if __name__ == "__main__":
 
                 optimizer.step()
                 pbar.set_description(
-                    f"Geodesics: {step_i}/{steps}"
+                    f"Geodesics: {step_i+1}/{steps}"
                 )
                 pbar.update(1)
                 
@@ -497,6 +497,12 @@ if __name__ == "__main__":
 
             geodesic_coords = path_z.detach().cpu().numpy()
             plt.plot(geodesic_coords[:, 0], geodesic_coords[:, 1], '-r')
+            geodesic_coords_saved.append(geodesic_coords)
+            
             
 
         plt.show()
+        plt.savefig("geodesics.png")
+        pickle.dump(geodesic_coords_saved, open("geodesics.pkl", "wb"))
+        print("Geodesics saved to geodesics.pkl")
+        
