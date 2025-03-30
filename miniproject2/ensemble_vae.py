@@ -18,7 +18,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from geodesics import *
 from tqdm import tqdm
-import pickle
 
 class GaussianPrior(nn.Module):
     def __init__(self, M):
@@ -438,7 +437,10 @@ if __name__ == "__main__":
         print("Print mean test elbo:", mean_elbo)
 
     elif args.mode == "geodesics":
-
+        N_POINTS = 64 # Number of points to sample along the geodesic
+        N_LATENT_PAIRS = 1
+        STEPS = 1000
+        
         model = VAE(
             GaussianPrior(M),
             GaussianDecoder(new_decoder()),
@@ -446,22 +448,39 @@ if __name__ == "__main__":
         ).to(device)
         model.load_state_dict(torch.load(args.experiment_folder + "/model.pt", weights_only=True))
         model.eval()
+        
+        # Freeze the model parameters
+        model.decoder.requires_grad = False
+        model.encoder.requires_grad = False
 
+        # Grab N_POINTS Latents
+        all_latents = []
+        all_labels = []
         with torch.no_grad():
-            x, y = next(iter(mnist_test_loader))
-            x = x.to(device)
-            latent = model.get_latent(x)
-
+            for x, y in mnist_test_loader:
+                x = x.to(device)
+                latent = model.get_latent(x).detach()  # Explicitly detach latent
+                all_latents.append(latent.cpu())
+                all_labels.append(y.cpu())
+                if len(all_latents) * args.batch_size >= N_POINTS:
+                    break
+            
+        latent = torch.cat(all_latents, dim=0)
+        labels = torch.cat(all_labels, dim=0)
+        if N_POINTS:
+            latent = latent[:N_POINTS] # Limit to N_POINTS
+            labels = labels[:N_POINTS]
+        
+        # Get latent pairs
         n =latent.shape[0]
         combinations = list(itertools.combinations(range(n), 2))
-        chosen_idx_pairs = random.choices(combinations, k=30)
+        chosen_idx_pairs = random.choices(combinations, k=N_LATENT_PAIRS)
         chosen_pairs = [(latent[i], latent[j]) for (i, j) in chosen_idx_pairs]
 
-        plt.scatter(latent[:, 0].cpu(), latent[:, 1].cpu(), c=y, cmap='viridis')
+        plt.scatter(latent[:, 0].cpu(), latent[:, 1].cpu(), c=labels, cmap='viridis')
 
         geodesic_coords_saved = []
-        steps = 1000
-        pbar = tqdm(total=len(chosen_pairs)*steps, desc="Geodesics")
+        pbar = tqdm(total=len(chosen_pairs)*STEPS, desc="Geodesics")
         for (z_start, z_end) in chosen_pairs:
             samples = np.linspace(0, 1, 30)
             path_init = [(1 - t) * z_start + t * z_end for t in samples]
@@ -473,20 +492,22 @@ if __name__ == "__main__":
 
             
             pbar.set_description(f"Geodesics: Starting optimization")
-            for step_i in range(steps):
+            for step_i in range(STEPS):
                 optimizer.zero_grad()
 
+                # Fix start and end points by assigning them directly without gradients
                 with torch.no_grad():
-                    path_z.data[0] = z_start  # fix start
-                    path_z.data[-1] = z_end   # fix end
+                    path_z.data[0] = z_start.detach()
+                    path_z.data[-1] = z_end.detach()
 
                 # E = sum_{i} (z_{i+1} - z_i)^T g(z_i) (z_{i+1} - z_i)
-                E = energy_curve_with_metric(path_z, model.decoder)
+                # E = energy_curve_with_metric(path_z, model.decoder)
+                E = energy_curve_monte_carlo(path_z, model.decoder)
                 E.backward()
 
                 optimizer.step()
                 pbar.set_description(
-                    f"Geodesics: {step_i+1}/{steps}"
+                    f"Geodesics: {step_i+1}/{STEPS}"
                 )
                 pbar.update(1)
                 
@@ -503,6 +524,6 @@ if __name__ == "__main__":
 
         plt.show()
         plt.savefig("geodesics.png")
-        pickle.dump(geodesic_coords_saved, open("geodesics.pkl", "wb"))
-        print("Geodesics saved to geodesics.pkl")
-        
+
+        geodesic_coords_saved = np.array(geodesic_coords_saved)
+        np.save("geodesics.npy", geodesic_coords_saved)

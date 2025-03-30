@@ -23,3 +23,6 @@ ddpm_sample:
 
 run_geo:
 	python miniproject2/ensemble_vae.py geodesics
+
+run_geo_cuda:
+	python miniproject2/ensemble_vae.py geodesics --device cuda
