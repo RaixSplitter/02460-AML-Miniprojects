@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from geodesics import *
 from tqdm import tqdm
+import random
 
 
 class GaussianPrior(nn.Module):
@@ -475,9 +476,7 @@ if __name__ == "__main__":
                 if not N_POINTS:  # If N_POINTS is not set, we want to sample all points
                     continue
 
-                if (
-                    len(all_latents) * args.batch_size >= N_POINTS
-                ):  # If we have enough points, break
+                if len(all_latents) * args.batch_size >= N_POINTS:  # If we have enough points, break
                     break
 
         # Concatenate all latents and labels
