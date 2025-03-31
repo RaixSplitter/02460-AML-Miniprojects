@@ -30,6 +30,23 @@ def energy_curve(curve): #Monte Carlo Energy
     n_samples = curve.shape[0] 
     return torch.sum(torch.stack([torch.norm(curve  [idx+1] - curve   [idx]) ** 2 for idx in range(n_samples - 1)])) / n_samples
 
+# def energy_curve_monte_carlo(path_z, decoder):
+#     x = decoder(path_z).mean
+#     total_energy = 0.0
+#     for i in range(x.shape[0] - 1):
+#         diff = x[i+1] - x[i]
+#         total_energy += torch.sum(diff**2)
+#     return total_energy / (x.shape[0]-1)
+
+def energy_curve_monte_carlo(path_z, decoder):
+    path_z = path_z.view(-1, 2)  # Reshape to [n_samples, 2]
+    x = decoder(path_z).mean
+    total_energy = 0.0
+    for i in range(x.shape[0] - 1):
+        diff = x[i+1] - x[i]
+        total_energy += torch.sum(diff**2)
+    return total_energy / (x.shape[0]-1)
+
 def energy_curve_with_metric(curve_z, decoder):
     total_energy = torch.tensor(0., device=curve_z.device, dtype=curve_z.dtype)
 
@@ -37,7 +54,7 @@ def energy_curve_with_metric(curve_z, decoder):
         z_i = curve_z[i].unsqueeze(0)  # shape [1,2]
         z_next = curve_z[i+1].unsqueeze(0)
         delta = (z_next - z_i).squeeze(0)
-
+        
         x_i = decoder(z_i).mean.view(1, -1)
 
         # Build the Jacobian of x_i wrt z_i

@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from geodesics import *
 from tqdm import tqdm
+import random
 
 
 class GaussianPrior(nn.Module):
@@ -135,7 +136,7 @@ class VAE(nn.Module):
             self.decoder(z).log_prob(x) - q.log_prob(z) + self.prior().log_prob(z)
         )
         return elbo
-    
+
     def get_latent(self, x):
         return self.encoder(x).rsample()
 
@@ -438,65 +439,113 @@ if __name__ == "__main__":
         print("Print mean test elbo:", mean_elbo)
 
     elif args.mode == "geodesics":
+        # Conf
+        N_POINTS = None  # Number of latents to sample
+        POINT_RESOLUTION = 20  # Number of points to sample along the geodesic
+        N_LATENT_PAIRS = 2  # Number of latent pairs to sample
+        STEPS = 100 # Number of steps to optimize the geodesic, 1000 recommended with Monto Carlo
+        GEODESIC_LEARNING_RATE = 0.1
+        TQDM_DISABLE = False # False to show progress bar, True to disable it
+        MONTO_MODE = False # True to use Monte Carlo, False to use the metric
 
+        # Init model
         model = VAE(
             GaussianPrior(M),
             GaussianDecoder(new_decoder()),
             GaussianEncoder(new_encoder()),
         ).to(device)
-        model.load_state_dict(torch.load(args.experiment_folder + "/model.pt", weights_only=True))
-        model.eval()
+        model.load_state_dict(
+            torch.load(args.experiment_folder + "/model.pt", weights_only=True)
+        )
+        model.eval()  # Set layer behavior to eval mode, note that it doesn't disable gradient calculation
 
+        # Freeze the model parameters
+        model.decoder.requires_grad = False
+        model.encoder.requires_grad = False
+
+        # Grab N_POINTS Latents
+        all_latents = []
+        all_labels = []
         with torch.no_grad():
-            x, y = next(iter(mnist_test_loader))
-            x = x.to(device)
-            latent = model.get_latent(x)
+            for x, y in mnist_test_loader:
+                x = x.to(device)
+                latent = model.get_latent(x).detach()  # Explicitly detach latent
+                all_latents.append(latent.cpu())
+                all_labels.append(y.cpu())
 
-        n =latent.shape[0]
-        combinations = list(itertools.combinations(range(n), 2))
-        chosen_idx_pairs = random.choices(combinations, k=1)
-        chosen_pairs = [(latent[i], latent[j]) for (i, j) in chosen_idx_pairs]
+                if not N_POINTS:  # If N_POINTS is not set, we want to sample all points
+                    continue
 
-        plt.scatter(latent[:, 0].cpu(), latent[:, 1].cpu(), c=y, cmap='viridis')
+                if len(all_latents) * args.batch_size >= N_POINTS:  # If we have enough points, break
+                    break
 
-    
-        steps = 5
-        pbar = tqdm(total=len(chosen_pairs)*steps, desc="Geodesics")
-        for (z_start, z_end) in chosen_pairs:
+        # Concatenate all latents and labels
+        latent = torch.cat(all_latents, dim=0)
+        labels = torch.cat(all_labels, dim=0)
+        if N_POINTS:  # Limit to N_POINTS
+            latent = latent[:N_POINTS]
+            labels = labels[:N_POINTS]
+
+        # Get latent pairs
+        n = latent.shape[0]
+
+        chosen_idx_pairs = random.choices(range(n), k=N_LATENT_PAIRS * 2)
+        chosen_idx_pairs = [
+            (chosen_idx_pairs[i], chosen_idx_pairs[i + 1])
+            for i in range(0, len(chosen_idx_pairs), 2)
+        ]
+        
+        chosen_pairs = [
+            torch.stack([latent[i], latent[j]]) for (i, j) in chosen_idx_pairs
+        ]
+        chosen_pairs = torch.stack(chosen_pairs).to(
+            device
+        )  # shape [N_LATENT_PAIRS, 2, 2]
+
+        geodesic_coords_saved = []
+        pbar = tqdm(total=len(chosen_pairs) * STEPS, desc="Geodesics", disable = TQDM_DISABLE)
+
+        for i, (z_start, z_end) in enumerate(chosen_pairs):
             samples = np.linspace(0, 1, 30)
             path_init = [(1 - t) * z_start + t * z_end for t in samples]
             path_init = torch.stack(path_init).to(device)  # shape [30, 2]
 
             path_z = torch.nn.Parameter(path_init.clone(), requires_grad=True)
 
-            optimizer = torch.optim.Adam([path_z], lr=1e-1)
+            optimizer = torch.optim.Adam([path_z], lr=GEODESIC_LEARNING_RATE)
 
-            
             pbar.set_description(f"Geodesics: Starting optimization")
-            for step_i in range(steps):
+            for step_i in range(STEPS):
                 optimizer.zero_grad()
 
+                # Fix start and end points by assigning them directly without gradients
                 with torch.no_grad():
-                    path_z.data[0] = z_start  # fix start
-                    path_z.data[-1] = z_end   # fix end
+                    path_z.data[0] = z_start.detach()
+                    path_z.data[-1] = z_end.detach()
 
                 # E = sum_{i} (z_{i+1} - z_i)^T g(z_i) (z_{i+1} - z_i)
-                E = energy_curve_with_metric(path_z, model.decoder)
+                if MONTO_MODE:
+                    E = energy_curve_monte_carlo(path_z, model.decoder)
+                else:
+                    E = energy_curve_with_metric(path_z, model.decoder)
                 E.backward()
 
                 optimizer.step()
-                pbar.set_description(
-                    f"Geodesics: {step_i}/{steps}"
-                )
+                pbar.set_description(f"Geodesics: {step_i+1}/{STEPS} | Latent pair {i+1}/{N_LATENT_PAIRS}")
                 pbar.update(1)
-                
 
             with torch.no_grad():
                 path_z.data[0] = z_start
                 path_z.data[-1] = z_end
 
             geodesic_coords = path_z.detach().cpu().numpy()
-            plt.plot(geodesic_coords[:, 0], geodesic_coords[:, 1], '-r')
-            
+            plt.plot(geodesic_coords[:, 0], geodesic_coords[:, 1], "-b")
+            geodesic_coords_saved.append(geodesic_coords)
 
+        plt.scatter(latent[:, 0].cpu(), latent[:, 1].cpu(), c=labels, cmap="viridis", alpha=0.5)
+        plt.savefig(f"results/geo{mont_str}PR{POINT_RESOLUTION}LP{N_LATENT_PAIRS}S{STEPS}LR{GEODESIC_LEARNING_RATE}.png")
         plt.show()
+        
+
+        geodesic_coords_saved = np.array(geodesic_coords_saved)
+        np.save("geodesics.npy", geodesic_coords_saved)
