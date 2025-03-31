@@ -443,7 +443,7 @@ if __name__ == "__main__":
         N_POINTS = None  # Number of latents to sample
         POINT_RESOLUTION = 20  # Number of points to sample along the geodesic
         N_LATENT_PAIRS = 2  # Number of latent pairs to sample
-        STEPS = 100 # Number of steps to optimize the geodesic
+        STEPS = 100 # Number of steps to optimize the geodesic, 1000 recommended with Monto Carlo
         GEODESIC_LEARNING_RATE = 0.1
         TQDM_DISABLE = False # False to show progress bar, True to disable it
         MONTO_MODE = False # True to use Monte Carlo, False to use the metric
@@ -543,7 +543,7 @@ if __name__ == "__main__":
             geodesic_coords_saved.append(geodesic_coords)
 
         plt.scatter(latent[:, 0].cpu(), latent[:, 1].cpu(), c=labels, cmap="viridis", alpha=0.5)
-        plt.savefig(f"geoPR{POINT_RESOLUTION}LP{N_LATENT_PAIRS}S{STEPS}LR{GEODESIC_LEARNING_RATE}.png")
+        plt.savefig(f"results/geo{mont_str}PR{POINT_RESOLUTION}LP{N_LATENT_PAIRS}S{STEPS}LR{GEODESIC_LEARNING_RATE}.png")
         plt.show()
         
 
