@@ -300,12 +300,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--seeds",  # Seeds used to train ensembles
-        #type=list,
+        type=int,  # So that inputs are parsed as integers
         nargs='+',
-        default= "42 0 123 1234 1 2 3 4 5 6",
+        default=[42, 0, 123, 1234, 1, 2, 3, 4, 5, 6],
         metavar="seeds",
         help="Different seeds to train the VAEs (default: %(default)s)",
     )
+
 
     args = parser.parse_args()
     print("# Options")
@@ -412,28 +413,32 @@ if __name__ == "__main__":
         if args.seeds == None:
             Exception("Seeds for the ensemble needs to be given as list")
         for seed in args.seeds:
+            print(args.seeds)
+            print(seed)
             seed = int(seed)
+
             torch.manual_seed(seed)
             experiments_folder = f"{args.experiment_folder}_{seed}"
             os.makedirs(f"{experiments_folder}", exist_ok=True)
-            model = VAE(
-                GaussianPrior(M),
-                GaussianDecoder(new_decoder()),
-                GaussianEncoder(new_encoder()),
-            ).to(device)
-            optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-            train(
-                model,
-                optimizer,
-                mnist_train_loader,
-                args.epochs_per_decoder,
-                args.device,
-            )
-            os.makedirs(f"{experiments_folder}", exist_ok=True)
-            torch.save(
-                model.state_dict(),
-                f"{experiments_folder}/model.pt",
-            )
+            for i in range(args.decoders):
+                model = VAE(
+                    GaussianPrior(M),
+                    GaussianDecoder(new_decoder()),
+                    GaussianEncoder(new_encoder()),
+                ).to(device)
+                optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+                train(
+                    model,
+                    optimizer,
+                    mnist_train_loader,
+                    args.epochs_per_decoder,
+                    args.device,
+                )
+                os.makedirs(f"{experiments_folder}", exist_ok=True)
+                torch.save(
+                    model.state_dict(),
+                    f"{experiments_folder}/model_decoder_{i}.pt",
+                )
 
     elif args.mode == "sample":
         model = VAE(
@@ -477,11 +482,11 @@ if __name__ == "__main__":
         # Conf
         N_POINTS = None  # Number of latents to sample
         POINT_RESOLUTION = 20  # Number of points to sample along the geodesic
-        N_LATENT_PAIRS = 2  # Number of latent pairs to sample
-        STEPS = 100 # Number of steps to optimize the geodesic, 1000 recommended with Monto Carlo
+        N_LATENT_PAIRS = 35  # Number of latent pairs to sample
+        STEPS = 1000 # Number of steps to optimize the geodesic, 1000 recommended with Monto Carlo
         GEODESIC_LEARNING_RATE = 0.1
         TQDM_DISABLE = False # False to show progress bar, True to disable it
-        MONTO_MODE = False # True to use Monte Carlo, False to use the metric
+        MONTO_MODE = True # True to use Monte Carlo, False to use the metric
 
         # Init model
         model = VAE(
