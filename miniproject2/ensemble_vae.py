@@ -226,7 +226,7 @@ if __name__ == "__main__":
         "mode",
         type=str,
         default="train",
-        choices=["train", "sample", "eval", "geodesics"],
+        choices=["train", "sample", "eval", "geodesics", "train_ensemble"],
         help="what to do when running the script (default: %(default)s)",
     )
     parser.add_argument(
@@ -297,6 +297,14 @@ if __name__ == "__main__":
         default=20,
         metavar="N",
         help="number of points along the curve (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--seeds",  # Seeds used to train ensembles
+        #type=list,
+        nargs='+',
+        default= "42 0 123 1234 1 2 3 4 5 6",
+        metavar="seeds",
+        help="Different seeds to train the VAEs (default: %(default)s)",
     )
 
     args = parser.parse_args()
@@ -399,6 +407,33 @@ if __name__ == "__main__":
             model.state_dict(),
             f"{experiments_folder}/model.pt",
         )
+
+    elif args.mode == "train_ensemble":
+        if args.seeds == None:
+            Exception("Seeds for the ensemble needs to be given as list")
+        for seed in args.seeds:
+            seed = int(seed)
+            torch.manual_seed(seed)
+            experiments_folder = f"{args.experiment_folder}_{seed}"
+            os.makedirs(f"{experiments_folder}", exist_ok=True)
+            model = VAE(
+                GaussianPrior(M),
+                GaussianDecoder(new_decoder()),
+                GaussianEncoder(new_encoder()),
+            ).to(device)
+            optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+            train(
+                model,
+                optimizer,
+                mnist_train_loader,
+                args.epochs_per_decoder,
+                args.device,
+            )
+            os.makedirs(f"{experiments_folder}", exist_ok=True)
+            torch.save(
+                model.state_dict(),
+                f"{experiments_folder}/model.pt",
+            )
 
     elif args.mode == "sample":
         model = VAE(
@@ -525,8 +560,10 @@ if __name__ == "__main__":
 
                 # E = sum_{i} (z_{i+1} - z_i)^T g(z_i) (z_{i+1} - z_i)
                 if MONTO_MODE:
+                    mont_str = "MonteC"
                     E = energy_curve_monte_carlo(path_z, model.decoder)
                 else:
+                    mont_str = "Metric"
                     E = energy_curve_with_metric(path_z, model.decoder)
                 E.backward()
 
