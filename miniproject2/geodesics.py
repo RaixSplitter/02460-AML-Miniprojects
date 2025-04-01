@@ -74,12 +74,3 @@ def energy_curve_with_metric(curve_z, decoder):
         total_energy += seg_energy
 
     return total_energy
-
-def energy_curve_monte_carlo(path_z, decoder):
-    x = decoder(path_z).mean  
-    decoder.zero_grad
-    total_energy = 0.0
-    for i in range(x.shape[0] - 1):
-        diff = x[i+1] - x[i]
-        total_energy += torch.sum(diff**2)
-    return total_energy #/ (x.shape[0]-1)
