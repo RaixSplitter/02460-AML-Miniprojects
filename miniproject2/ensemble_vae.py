@@ -454,16 +454,16 @@ if __name__ == "__main__":
 
         n =latent.shape[0]
         combinations = list(itertools.combinations(range(n), 2))
-        chosen_idx_pairs = random.choices(combinations, k=1)
+        chosen_idx_pairs = random.choices(combinations, k=10)
         chosen_pairs = [(latent[i], latent[j]) for (i, j) in chosen_idx_pairs]
 
         plt.scatter(latent[:, 0].cpu(), latent[:, 1].cpu(), c=y, cmap='viridis')
 
     
-        steps = 5
+        steps = 1000
         pbar = tqdm(total=len(chosen_pairs)*steps, desc="Geodesics")
         for (z_start, z_end) in chosen_pairs:
-            samples = np.linspace(0, 1, 30)
+            samples = np.linspace(0, 1, 50)
             path_init = [(1 - t) * z_start + t * z_end for t in samples]
             path_init = torch.stack(path_init).to(device)  # shape [30, 2]
 
@@ -481,7 +481,8 @@ if __name__ == "__main__":
                     path_z.data[-1] = z_end   # fix end
 
                 # E = sum_{i} (z_{i+1} - z_i)^T g(z_i) (z_{i+1} - z_i)
-                E = energy_curve_with_metric(path_z, model.decoder)
+                # E = energy_curve_with_metric(path_z, model.decoder)
+                E = energy_curve_monte_carlo(path_z,model.decoder)
                 E.backward()
 
                 optimizer.step()
