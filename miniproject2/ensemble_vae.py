@@ -19,7 +19,6 @@ import numpy as np
 from geodesics import *
 from tqdm import tqdm
 import random
-import statistics
 
 
 class GaussianPrior(nn.Module):
@@ -227,7 +226,7 @@ if __name__ == "__main__":
         "mode",
         type=str,
         default="train",
-        choices=["train", "sample", "eval", "geodesics", "train_ensemble", "evaluate_ensemble"],
+        choices=["train", "sample", "eval", "geodesics"],
         help="what to do when running the script (default: %(default)s)",
     )
     parser.add_argument(
@@ -299,15 +298,6 @@ if __name__ == "__main__":
         metavar="N",
         help="number of points along the curve (default: %(default)s)",
     )
-    parser.add_argument(
-        "--seeds",  # Seeds used to train ensembles
-        type=int,  # So that inputs are parsed as integers
-        nargs='+',
-        default=[42, 0, 123, 1234, 1, 2, 3, 4, 5, 6],
-        metavar="seeds",
-        help="Different seeds to train the VAEs (default: %(default)s)",
-    )
-
 
     args = parser.parse_args()
     print("# Options")
@@ -385,11 +375,6 @@ if __name__ == "__main__":
         )
         return decoder_net
 
-    def coefficient_of_variation(distances):
-        dist_mean = statistics.mean(distances)
-        dist_std  = statistics.stdev(distances)
-        return dist_std / dist_mean
-
     # Choose mode to run
     if args.mode == "train":
 
@@ -414,37 +399,6 @@ if __name__ == "__main__":
             model.state_dict(),
             f"{experiments_folder}/model.pt",
         )
-
-    elif args.mode == "train_ensemble":
-        if args.seeds == None:
-            Exception("Seeds for the ensemble needs to be given as list")
-        for seed in args.seeds:
-            print(args.seeds)
-            print(seed)
-            seed = int(seed)
-
-            torch.manual_seed(seed)
-            experiments_folder = f"{args.experiment_folder}_{seed}"
-            os.makedirs(f"{experiments_folder}", exist_ok=True)
-            for i in range(args.num_decoders):
-                model = VAE(
-                    GaussianPrior(M),
-                    GaussianDecoder(new_decoder()),
-                    GaussianEncoder(new_encoder()),
-                ).to(device)
-                optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-                train(
-                    model,
-                    optimizer,
-                    mnist_train_loader,
-                    args.epochs_per_decoder,
-                    args.device,
-                )
-                os.makedirs(f"{experiments_folder}", exist_ok=True)
-                torch.save(
-                    model.state_dict(),
-                    f"{experiments_folder}/model_decoder_{i}.pt",
-                )
 
     elif args.mode == "sample":
         model = VAE(
@@ -488,11 +442,11 @@ if __name__ == "__main__":
         # Conf
         N_POINTS = None  # Number of latents to sample
         POINT_RESOLUTION = 20  # Number of points to sample along the geodesic
-        N_LATENT_PAIRS = 35  # Number of latent pairs to sample
-        STEPS = 1000 # Number of steps to optimize the geodesic, 1000 recommended with Monto Carlo
+        N_LATENT_PAIRS = 2  # Number of latent pairs to sample
+        STEPS = 100 # Number of steps to optimize the geodesic, 1000 recommended with Monto Carlo
         GEODESIC_LEARNING_RATE = 0.1
         TQDM_DISABLE = False # False to show progress bar, True to disable it
-        MONTO_MODE = True # True to use Monte Carlo, False to use the metric
+        MONTO_MODE = False # True to use Monte Carlo, False to use the metric
 
         # Init model
         model = VAE(
@@ -571,10 +525,8 @@ if __name__ == "__main__":
 
                 # E = sum_{i} (z_{i+1} - z_i)^T g(z_i) (z_{i+1} - z_i)
                 if MONTO_MODE:
-                    mont_str = "MonteC"
                     E = energy_curve_monte_carlo(path_z, model.decoder)
                 else:
-                    mont_str = "Metric"
                     E = energy_curve_with_metric(path_z, model.decoder)
                 E.backward()
 
@@ -590,9 +542,10 @@ if __name__ == "__main__":
             plt.plot(geodesic_coords[:, 0], geodesic_coords[:, 1], "-b")
             geodesic_coords_saved.append(geodesic_coords)
 
+        mont_str = 'MC' if MONTO_MODE else 'METRIC'
         plt.scatter(latent[:, 0].cpu(), latent[:, 1].cpu(), c=labels, cmap="viridis", alpha=0.5)
         plt.savefig(f"results/geo{mont_str}PR{POINT_RESOLUTION}LP{N_LATENT_PAIRS}S{STEPS}LR{GEODESIC_LEARNING_RATE}.png")
-        plt.show()
+        # plt.show()
         
 
         geodesic_coords_saved = np.array(geodesic_coords_saved)
