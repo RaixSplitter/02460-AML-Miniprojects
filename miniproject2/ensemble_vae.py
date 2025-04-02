@@ -628,7 +628,7 @@ if __name__ == "__main__":
         for num_decs in dec_list:
             all_eucl = []
             all_geo  = []
-
+            
             for seed in args.seeds:
                 experiment_folder_seed = f"{args.experiment_folder}_{seed}"
 
@@ -681,7 +681,7 @@ if __name__ == "__main__":
                     # For the assignment, you might consider final_energy as "the geodesic distance",
                     # or you might do math.sqrt(final_energy). The instructions hint to use the sum of
                     # squared differences as your measure. We'll just store final_energy here.
-                    geo_dist = final_energy
+                    geo_dist = euclidean_path_length(path_opt)
 
                     eucl_dists_for_seed.append(eucl_dist)
                     geo_dists_for_seed.append(geo_dist)
