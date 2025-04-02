@@ -146,3 +146,21 @@ def find_ensemble_geodesic(
 
     final_energy = ensemble_curve_energy_monte_carlo(path_z, decoders, n_samples=n_samples)
     return path_z.detach(), final_energy.item()
+
+def euclidean_path_length(path_z):
+    """
+    Computes the Euclidean length of a discretized path in latent space.
+    That is, sum of ||z_{i+1} - z_i|| over i.
+
+    Args:
+        path_z (torch.Tensor): shape (T, latent_dim), the optimized path.
+
+    Returns:
+        float: the total path length in latent space (Euclidean).
+    """
+    total_length = 0.0
+    # We iterate over each adjacent pair in path_z
+    for i in range(path_z.shape[0] - 1):
+        segment_len = torch.norm(path_z[i+1] - path_z[i]).item()
+        total_length += segment_len
+    return total_length
