@@ -164,3 +164,13 @@ def euclidean_path_length(path_z):
         segment_len = torch.norm(path_z[i+1] - path_z[i]).item()
         total_length += segment_len
     return total_length
+
+def coefficient_of_variation(distances):
+    """
+    distances: list of floats, e.g. [d_ij^(1), ..., d_ij^(M)] from M seeds
+    Returns the CoV = std / mean
+    """
+    import statistics
+    mean_ = statistics.mean(distances)
+    std_  = statistics.stdev(distances)
+    return std_ / mean_ if mean_ > 1e-10 else 0.0
