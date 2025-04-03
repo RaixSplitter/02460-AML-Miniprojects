@@ -1,0 +1,28 @@
+
+
+device : cuda
+batch_size : 32
+seed : random
+experiment_folder : ./experiments/ensemblyVAE
+epochs_per_decoder : 50
+latent_dim : 2
+num_decoders : 3
+num_reruns : 10
+num_curves : 10
+tqdm_disable : false
+n_samples : 5
+
+model_name : modelSeed544nD3.pt
+
+geodesics:
+  n_points : false
+  num_t : 20 
+  n_latent_pairs : 25
+  steps : 1000
+  lr : 0.01
+  monte_mode : false
+  magnitude : 7
+  k : 3
+
+eval_ensemble:
+  n_latent_pairs : 25
