@@ -226,7 +226,7 @@ if __name__ == "__main__":
         "mode",
         type=str,
         default="train",
-        choices=["train", "sample", "eval", "geodesics"],
+        choices=["train", "sample", "eval", "geodesics", "evaluate_ensemble"],
         help="what to do when running the script (default: %(default)s)",
     )
     parser.add_argument(
@@ -297,6 +297,14 @@ if __name__ == "__main__":
         default=20,
         metavar="N",
         help="number of points along the curve (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--seeds",  # Seeds used to train ensembles
+        type=int,  # So that inputs are parsed as integers
+        nargs='+',
+        default=[42, 0, 123, 1234, 1, 2, 3, 4, 5, 6],
+        metavar="seeds",
+        help="Different seeds to train the VAEs (default: %(default)s)",
     )
 
     args = parser.parse_args()
@@ -438,6 +446,37 @@ if __name__ == "__main__":
         mean_elbo = torch.tensor(elbos).mean()
         print("Print mean test elbo:", mean_elbo)
 
+    elif args.mode == "train_ensemble":
+        if args.seeds == None:
+            Exception("Seeds for the ensemble needs to be given as list")
+        for seed in args.seeds:
+            print(args.seeds)
+            print(seed)
+            seed = int(seed)
+
+            torch.manual_seed(seed)
+            experiments_folder = f"{args.experiment_folder}_{seed}"
+            os.makedirs(f"{experiments_folder}", exist_ok=True)
+            for i in range(args.num_decoders):
+                model = VAE(
+                    GaussianPrior(M),
+                    GaussianDecoder(new_decoder()),
+                    GaussianEncoder(new_encoder()),
+                ).to(device)
+                optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+                train(
+                    model,
+                    optimizer,
+                    mnist_train_loader,
+                    args.epochs_per_decoder,
+                    args.device,
+                )
+                os.makedirs(f"{experiments_folder}", exist_ok=True)
+                torch.save(
+                    model.state_dict(),
+                    f"{experiments_folder}/model_decoder_{i}.pt",
+                )
+
     elif args.mode == "geodesics":
         # Conf
         N_POINTS = None  # Number of latents to sample
@@ -552,29 +591,17 @@ if __name__ == "__main__":
         np.save("geodesics.npy", geodesic_coords_saved)
 
     elif args.mode == "evaluate_ensemble":
-        """
-        Evaluate how CoV changes for 1,2,3 decoders across multiple seeds.
-        We'll show how to compute distances (Eucl & Geo) and get CoV,
-        and how to do a final plot (CoV vs #decoders).
-        """
 
-        # We'll store CoV results for each #dec in [1,2,3].
-        # If you like, you can just run your script 3 times with different --num-decoders,
-        # but let's assume we want to do all in one go:
-        #   python main.py evaluate_ensemble --seeds 0 1 ... 9
-        # We'll just loop over dec_list below:
         dec_list = [1, 2, 3]
 
-        # For reproducibility of which test pairs we pick
         random.seed(999)
 
         data_iter = iter(mnist_test_loader)
-        x_full, y_full = next(data_iter)  # just one batch for demonstration
-        # pick 10 random pairs
-        pairs_idx = random.sample(range(len(x_full)), 20)  # 20 so we form 10 pairs
+        x_full, y_full = next(data_iter)  
+        
+        pairs_idx = random.sample(range(len(x_full)), 50)  
         pairs_idx = [(pairs_idx[i], pairs_idx[i+1]) for i in range(0, 20, 2)]
 
-        # We'll store the final average CoVs for plotting
         eucl_covs_for_plot = []
         geo_covs_for_plot = []
 
@@ -585,8 +612,6 @@ if __name__ == "__main__":
             for seed in args.seeds:
                 experiment_folder_seed = f"{args.experiment_folder}_{seed}"
 
-                # 1) Load the encoder from e.g. "model_decoder_0.pt"
-                #    (assuming that file also has the encoder stored in it)
                 model = VAE(
                     GaussianPrior(args.latent_dim),
                     GaussianDecoder(new_decoder()),
@@ -598,19 +623,24 @@ if __name__ == "__main__":
                     strict=False
                 )
                 model.eval()
+                model.encoder.requires_grad = False
 
-                # 2) Load all decoders for this ensemble
                 decoders = []
                 for d_i in range(num_decs):
-                    dec = GaussianDecoder(new_decoder()).to(device)
-                    dec.load_state_dict(
+                    model_dec = VAE(
+                    GaussianPrior(args.latent_dim),
+                    GaussianDecoder(new_decoder()),
+                    GaussianEncoder(new_encoder())
+                    ).to(device)
+
+                    model_dec.load_state_dict(
                         torch.load(f"{experiment_folder_seed}/model_decoder_{d_i}.pt", map_location=device),
                         strict=False
                     )
-                    dec.eval()
-                    decoders.append(dec)
+                    model_dec.eval()
+                    model_dec.requires_grad = False
+                    decoders.append(model_dec.decoder)
 
-                # Distances for each pair => lists
                 eucl_dists_for_seed = []
                 geo_dists_for_seed = []
 
@@ -619,35 +649,27 @@ if __name__ == "__main__":
                     yb = x_full[idx_b:idx_b+1].to(device)
 
                     with torch.no_grad():
-                        za = model.encoder(ya).mean.squeeze(0)  # shape (latent_dim,)
+                        za = model.encoder(ya).mean.squeeze(0)  
                         zb = model.encoder(yb).mean.squeeze(0)
 
-                    # Euclidean distance
                     eucl_dist = torch.norm(za - zb).item()
 
-                    # Geodesic distance using ensemble
-                    # (We can either interpret the final_energy as a distance or sqrt of that.)
                     path_opt, final_energy = find_ensemble_geodesic(
                         z_start=za, z_end=zb, decoders=decoders,
                         steps=200, lr=0.01, path_points=20, n_samples=5
                     )
-                    # For the assignment, you might consider final_energy as "the geodesic distance",
-                    # or you might do math.sqrt(final_energy). The instructions hint to use the sum of
-                    # squared differences as your measure. We'll just store final_energy here.
+                    
                     geo_dist = euclidean_path_length(path_opt)
 
                     eucl_dists_for_seed.append(eucl_dist)
                     geo_dists_for_seed.append(geo_dist)
-
-                # accumulate
+                
                 all_eucl.append(eucl_dists_for_seed)
                 all_geo.append(geo_dists_for_seed)
-
-            # shape => (n_seeds, n_pairs) => transpose => (n_pairs, n_seeds)
+            
             all_eucl = np.array(all_eucl).T
             all_geo  = np.array(all_geo).T
 
-            # compute CoV per pair, then average
             pair_eucl_covs = [coefficient_of_variation(all_eucl[i]) for i in range(all_eucl.shape[0])]
             pair_geo_covs  = [coefficient_of_variation(all_geo[i]) for i in range(all_geo.shape[0])]
 
@@ -661,7 +683,6 @@ if __name__ == "__main__":
             eucl_covs_for_plot.append(avg_cov_eucl)
             geo_covs_for_plot.append(avg_cov_geo)
 
-        # 3) Plot CoV vs. number of decoders
         plt.plot(dec_list, eucl_covs_for_plot, marker='o', label='Eucl CoV')
         plt.plot(dec_list, geo_covs_for_plot, marker='o', label='Geo CoV')
         plt.xlabel('Number of decoders in ensemble')

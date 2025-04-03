@@ -81,25 +81,17 @@ def ensemble_curve_energy_monte_carlo(path_z, decoders, n_samples=10):
     for i in range(path_z.shape[0] - 1):
         z_i   = path_z[i].unsqueeze(0)     # shape (1, latent_dim)
         z_ip1 = path_z[i+1].unsqueeze(0)   # shape (1, latent_dim)
-
-        # We'll accumulate this segment's energy in a local tensor
         segment_energy = torch.zeros((), device=path_z.device, dtype=path_z.dtype, requires_grad=True)
-
         for _ in range(n_samples):
             l = random.randint(0, len(decoders) - 1)
             k = random.randint(0, len(decoders) - 1)
-
-            dist_l = decoders[l](z_i)     # distribution => has .mean
+            dist_l = decoders[l](z_i)     
             dist_k = decoders[k](z_ip1)
-
-            diff = dist_l.mean - dist_k.mean  # shape (1, 1, H, W) for images
+            diff = dist_l.mean - dist_k.mean 
             sq_norm = (diff**2).sum()
             segment_energy = segment_energy + sq_norm
-
-        # average over the n_samples
         segment_energy = segment_energy / n_samples
         total_energy = total_energy + segment_energy
-
     return total_energy
 
 def find_ensemble_geodesic(
@@ -112,14 +104,12 @@ def find_ensemble_geodesic(
     """
     device = z_start.device
 
-    # Discretize the path
     t_vals = torch.linspace(0, 1, path_points, device=device)
     init_path = [(1 - t) * z_start + t * z_end for t in t_vals]
     path_z = nn.Parameter(torch.stack(init_path), requires_grad=True)
 
     optimizer = torch.optim.Adam([path_z], lr=lr)
 
-    # Use a tqdm progress bar over the number of steps
     with tqdm(range(steps), desc="Geodesic optimization") as pbar:
         for step in pbar:
             optimizer.zero_grad()
@@ -135,11 +125,8 @@ def find_ensemble_geodesic(
             energy_tensor.backward()
             optimizer.step()
 
-            # Optional: update the tqdm description
             pbar.set_postfix({"energy": float(energy_tensor.item())})
 
-
-    # Final clamp of endpoints
     with torch.no_grad():
         path_z[0] = z_start
         path_z[-1] = z_end
