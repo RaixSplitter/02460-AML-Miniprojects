@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}/miniproject2",
+            "cwd": "${workspaceFolder}/miniproject3",
             "args": [
                 "${command:pickArgs}"
             ]
