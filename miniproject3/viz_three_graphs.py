@@ -30,7 +30,13 @@ density = (2*M)/(N*(N-1)) if N > 1 else 0.0
 # ---------------------------------------------------------------
 # 2) Erdős–Rényi sample with same N & density
 # ---------------------------------------------------------------
-er_sample = nx.gnp_random_graph(N, density, seed=42)
+from erdos_renyi_baseline import ErdosRenyiBaseline
+
+# build a *tiny* training set containing just the empirical graph,
+# so the baseline’s P(N) and r_N are defined:
+er = ErdosRenyiBaseline(seed=42)
+er.fit([empirical])
+er_sample = er.sample_graph()           # draw ONE graph
 
 # ---------------------------------------------------------------
 # 3) Graph-VAE sample with same N
