@@ -61,6 +61,22 @@ class ErdosRenyiBaseline:
     def sample(self, n_graphs: int = 1) -> list[nx.Graph]:
         """Generate n_graphs independent samples."""
         return [self.sample_graph() for _ in range(n_graphs)]
+    
+    def save_model(self, path: str) -> None:
+        """Save the model state to a file."""
+        state = {
+            "p_N": self._p_N,
+            "r_N": self._r_N,
+            "seed": self.rng.seed
+        }
+        np.savez_compressed(path, **state)
+
+    def load_model(self, path: str) -> None:
+        """Load the model state from a file."""
+        state = np.load(path, allow_pickle=True)
+        self._p_N = state["p_N"].tolist()
+        self._r_N = state["r_N"].item()
+        self.rng.seed = state["seed"].item()
 
 
 # --------------------- tiny usage demo ---------------------
@@ -69,11 +85,19 @@ if __name__ == "__main__":
 
     dataset = TUDataset(root="data", name="MUTAG")
     idx_train = np.arange(150)  # ← example split (use yours!)
-    train_graphs = [to_networkx(dataset[i]) for i in idx_train]
+    train_graphs = [to_networkx(dataset[i]).to_undirected() for i in idx_train]
 
     # 2) Fit + sample
     er = ErdosRenyiBaseline(seed=42)
     er.fit(train_graphs)
     fake_graphs = er.sample(1000)
-
+    print("Fitted model: ", er._r_N)
     print("Example generated graph:", fake_graphs[0])
+
+    
+    # 3) Save and load model
+    er.save_model("erdos_renyi_model.npz")
+    er2 = ErdosRenyiBaseline()
+    er2.load_model("erdos_renyi_model.npz")
+    print("Loaded model:", er2._r_N)
+    print("Sampled graph from loaded model:", er2.sample_graph())

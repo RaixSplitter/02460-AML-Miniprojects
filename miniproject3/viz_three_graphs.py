@@ -18,7 +18,7 @@ try:
     from torch_geometric.datasets import TUDataset
     from torch_geometric.utils import to_networkx
     dataset = TUDataset(root="data", name="MUTAG")
-    empirical = to_networkx(dataset[0])          # pick the first molecule
+    empirical = to_networkx(dataset[0]).to_undirected()          # pick the first molecule
 except Exception as e:
     print("⚠︎ MUTAG not available – using a 10-node path graph instead.")
     empirical = nx.path_graph(10)
