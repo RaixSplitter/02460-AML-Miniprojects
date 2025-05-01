@@ -165,3 +165,4 @@ cython_debug/
 *submit.sh
 /miniproject2/data/*
 /miniproject2/outputs
+/miniproject3/data
