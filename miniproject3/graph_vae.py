@@ -45,7 +45,7 @@ class GraphVAE(nn.Module):
         pos_set = {tuple(e) for e in edge_index_pos.t().tolist()}
         neg_edges = []
         while len(neg_edges) < edge_index_pos.size(1):
-            u, v = random.sample(idx, 2)
+            u, v = random.sample(list(idx), 2)
             if (u, v) not in pos_set and (v, u) not in pos_set:
                 neg_edges.append((u, v))
         neg_edges = torch.tensor(neg_edges, device=z.device).t()

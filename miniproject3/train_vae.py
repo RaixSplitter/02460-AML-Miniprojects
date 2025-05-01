@@ -21,6 +21,15 @@ in_dim = dataset.num_node_features   # MUTAG: 7-dim one-hot atom type
 model = GraphVAE(in_dim).to("cpu")
 optim = torch.optim.Adam(model.parameters(), lr=1e-3)
 
+
+import erdos_renyi_baseline as er
+
+er = er.ErdosRenyiBaseline(seed=42)
+train_graphs = [to_networkx(i) for i in train_set]
+er.fit(train_graphs)
+er.save_model("erdos_renyi_model.npz")
+
+
 # ------------ loop ------------------
 for epoch in range(1, 201):
     model.train()
@@ -42,3 +51,5 @@ for epoch in range(1, 201):
         print(f"   > Val loss: {vloss / len(val_loader):.4f}")
 
 torch.save(model.state_dict(), "graph_vae.pt")
+
+
