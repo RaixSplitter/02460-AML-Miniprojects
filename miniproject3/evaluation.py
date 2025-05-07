@@ -8,16 +8,17 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from isomorphic import is_isomorphic
 from tqdm import tqdm
+import random
 
 # ------------ CONFIG ---------------
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
+WEIGHT_PATH    = "graph_vae_undirected.pt" 
 # ------------ data -----------------
 dataset = TUDataset(root="data", name="MUTAG")
 
 
 train_graphs = [to_networkx(i).to_undirected() for i in dataset]
-
+node_counts = [g.number_of_nodes() for g in train_graphs]
 # 2) Fit + sample
 er = ErdosRenyiBaseline(seed=42)
 er.load_model("erdos_renyi_model.npz")
@@ -26,6 +27,23 @@ er_graphs = er.sample(1000)
 
 novel_graphs = [True] * len(er_graphs)
 unique_graphs = [True] * len(er_graphs)
+
+in_dim = dataset.num_node_features
+vae    = GraphVAE(in_dim).to(DEVICE)
+vae.load_state_dict(torch.load(WEIGHT_PATH))
+vae.eval()
+
+def sample_vae_graphs(n_samples: int) -> list[nx.Graph]:
+    """Draw graphs whose node-count follows the training distribution."""
+    with torch.no_grad():
+        sizes   = random.choices(node_counts, k=n_samples)
+        graphs  = []
+        for N in sizes:
+            g = vae.generate_graph(N=N, device=DEVICE)   # no thresh needed now
+            graphs.append(g)
+    return graphs
+
+vae_graphs = sample_vae_graphs(1000)
 
 for i in tqdm(range(len(er_graphs))):
     for train_graph in train_graphs:
@@ -98,7 +116,7 @@ print("Average Eigenvector Centrality: ", sum(eigenvector_centralities) / len(ei
 
 
 # Example usage for train graphs
-plot_graph_statistics(avg_node_degrees, clustering_coeffs, eigenvector_centralities, "Train Graphs")
+plot_graph_statistics(avg_node_degrees, clustering_coeffs, eigenvector_centralities, "Empirical Graphs")
 
 avg_node_degrees, clustering_coeffs, eigenvector_centralities = compute_graph_statistics(er_graphs)
 
@@ -106,4 +124,12 @@ print("Average Node Degree: ", sum(avg_node_degrees) / len(avg_node_degrees))
 print("Average Clustering Coefficient: ", sum(clustering_coeffs) / len(clustering_coeffs))
 print("Average Eigenvector Centrality: ", sum(eigenvector_centralities) / len(eigenvector_centralities))
 
-plot_graph_statistics(avg_node_degrees, clustering_coeffs, eigenvector_centralities, "Train Graphs")
+plot_graph_statistics(avg_node_degrees, clustering_coeffs, eigenvector_centralities, "Erdos Renyi Graphs")
+
+
+avg_node_degrees, clustering_coeffs, eigenvector_centralities = compute_graph_statistics(vae_graphs)
+print("Average Node Degree: ", sum(avg_node_degrees) / len(avg_node_degrees))
+print("Average Clustering Coefficient: ", sum(clustering_coeffs) / len(clustering_coeffs))
+print("Average Eigenvector Centrality: ", sum(eigenvector_centralities) / len(eigenvector_centralities))
+
+plot_graph_statistics(avg_node_degrees, clustering_coeffs, eigenvector_centralities, "Graph VAE Graphs")
