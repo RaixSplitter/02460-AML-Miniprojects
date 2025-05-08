@@ -3,7 +3,7 @@ from torch_geometric.datasets import TUDataset
 from torch_geometric.utils import to_networkx
 from torch_geometric.loader import DataLoader
 from erdos_renyi_baseline import ErdosRenyiBaseline
-from graph_vae import GraphVAE
+from graph_vae_mpnn import GraphVAE
 import networkx as nx
 import matplotlib.pyplot as plt
 from isomorphic import is_isomorphic
@@ -12,7 +12,7 @@ import random
 
 # ------------ CONFIG ---------------
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-WEIGHT_PATH    = "graph_vae_undirected.pt" 
+WEIGHT_PATH    = "graph_vae_mpnn.pt" 
 # ------------ data -----------------
 dataset = TUDataset(root="data", name="MUTAG")
 
@@ -45,23 +45,28 @@ def sample_vae_graphs(n_samples: int) -> list[nx.Graph]:
 
 vae_graphs = sample_vae_graphs(1000)
 
-for i in tqdm(range(len(er_graphs))):
-    for train_graph in train_graphs:
-        if is_isomorphic(er_graphs[i], train_graph):
-            novel_graphs[i] = False
-            break
-    
-    for j in range(i + 1, len(er_graphs)):
-        if is_isomorphic(er_graphs[i], er_graphs[j]):
-            unique_graphs[i] = False
-            unique_graphs[j] = False
-            break
+
+def benchmark(graphs, model):
+    for i in tqdm(range(len(graphs))):
+        for train_graph in train_graphs:
+            if is_isomorphic(graphs[i], train_graph):
+                novel_graphs[i] = False
+                break
         
+        for j in range(i + 1, len(graphs)):
+            if is_isomorphic(graphs[i], graphs[j]):
+                unique_graphs[i] = False
+                unique_graphs[j] = False
+                break
+            
+            
         
-    
-print("Novel graphs: ", sum(novel_graphs))
-print("Unique graphs: ", sum(unique_graphs))
-print("Total graphs: ", len(er_graphs))
+    print(f"{model}: Novel graphs: ", sum(novel_graphs))
+    print(f"{model}: Unique graphs: ", sum(unique_graphs))
+    print(f"{model}: Total graphs: ", len(er_graphs))
+
+benchmark(er_graphs, "Erdos Renyi")
+benchmark(vae_graphs, "Graph VAE")
 # Compute Average Node Degree, Clustering Coefficient, and Eigenvector Centrality
 def compute_graph_statistics(graphs):
     avg_node_degrees = []

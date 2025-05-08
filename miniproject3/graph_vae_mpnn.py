@@ -14,6 +14,7 @@ import torch.nn.functional as F
 from torch import nn
 from torch_geometric.utils import negative_sampling
 import networkx as nx
+import numpy as np
 
 # -----------------------------------------------------------------------------
 class MPNNEncoder(nn.Module):
@@ -28,12 +29,10 @@ class MPNNEncoder(nn.Module):
         self.z_dim = z_dim
         self.g_dim = g_dim
 
-        # input → hidden
         self.input_net = nn.Sequential(
             nn.Linear(in_dim, state_dim), nn.ReLU(), nn.Dropout(dropout)
         )
 
-        # message & update nets per round
         self.message_net = nn.ModuleList([
             nn.Sequential(nn.Linear(state_dim, state_dim), nn.ReLU(), nn.Dropout(dropout))
             for _ in range(rounds)
@@ -97,7 +96,6 @@ class EdgeDecoderMP(nn.Module):
             nn.Linear(4 * state_dim, state_dim), nn.ReLU(), nn.Linear(state_dim, 1)
         )
 
-    # ---- split helpers ------------------------------------------------------
     def message_pass(self, h: torch.Tensor, edge_index: torch.Tensor):
         for r in range(self.rounds):
             m   = self.message_net[r](h)
@@ -112,7 +110,6 @@ class EdgeDecoderMP(nn.Module):
         phi = torch.cat([h_u, h_v, (h_u-h_v).abs(), h_u*h_v], dim=-1)
         return self.edge_mlp(phi).squeeze(-1)
 
-# -----------------------------------------------------------------------------
 class GraphVAE(nn.Module):
     """Node- & graph-level VAE with MPNN decoder."""
 
@@ -132,30 +129,24 @@ class GraphVAE(nn.Module):
         self.z_dim = z_dim
         self.g_dim = g_dim
 
-        # encoder / decoder
         self.encoder = MPNNEncoder(in_dim, hid_dim, z_dim, g_dim, rounds_enc, dropout)
         self.decoder = EdgeDecoderMP(hid_dim, rounds_dec, dropout)
 
-        # latent projection to decoder state size
         self.latent_proj = nn.Linear(z_dim + g_dim, hid_dim)
 
-        # calibration params
         self.tau        = nn.Parameter(torch.tensor(1.0))
         self.logit_bias = nn.Parameter(torch.zeros(()))
 
-        # BCE weight for class imbalance
         self.register_buffer('pos_weight', torch.tensor(pos_weight))
 
         self.max_nodes = max_nodes
 
-    # ---- internal -----------------------------------------------------------
     def _edge_logits(self, z_cat: torch.Tensor, edge_ij: torch.Tensor, edge_pos: torch.Tensor):
         h0 = F.relu(self.latent_proj(z_cat))
         h  = self.decoder.message_pass(h0, edge_pos)         # only positives
         raw = self.decoder.score_pairs(h, edge_ij) / self.tau
         return raw + self.logit_bias
 
-    # ---- public -------------------------------------------------------------
     def decode(self, z_cat: torch.Tensor, edge_pos: torch.Tensor, num_nodes: int, neg_ratio: int):
         neg_edge = negative_sampling(edge_pos, num_nodes=num_nodes,
                                      num_neg_samples=neg_ratio*edge_pos.size(1), method='sparse')
@@ -166,11 +157,9 @@ class GraphVAE(nn.Module):
                             torch.zeros(neg_edge.size(1),  device=z_cat.device)])
         return logits, labels
 
-    # ------------------------------------------------------------------------
     def forward(self, data, beta=1.0, neg_ratio:int=12):
         mu_n, logvar_n, mu_g, logvar_g = self.encoder(data.x, data.edge_index)
 
-        # sample latents
         z_n = mu_n + torch.randn_like(mu_n) * torch.exp(0.5*logvar_n)   # (N,z)
         z_g = mu_g + torch.randn_like(mu_g) * torch.exp(0.5*logvar_g)   # (g_dim,)
         z_g_exp = z_g.unsqueeze(0).expand(z_n.size(0), -1)              # (N,g)
@@ -186,7 +175,6 @@ class GraphVAE(nn.Module):
         loss = recon + beta * (kl_node + kl_graph)
         return loss, recon.detach(), (kl_node+kl_graph).detach()
 
-    # ------------------------------------------------------------------------
     def _all_pairs_index(self, N: int, device):
         idx = torch.combinations(torch.arange(N, device=device), r=2)
         return idx.t()                               # (2, N·(N-1)//2)
@@ -197,27 +185,23 @@ class GraphVAE(nn.Module):
         assert N <= self.max_nodes
         self.eval()
 
-        # ----- sample latents --------------------------------------------------
         z_node = torch.randn(N,  self.z_dim, device=device)
         z_g    = torch.randn(1,  self.g_dim, device=device)      # single graph vector
         z_g    = z_g.repeat(N, 1)
         z_cat  = torch.cat([z_node, z_g], 1)                     # (N, z+g)
 
-        # ----- run the *same* path as training -------------------------------
         h0     = F.relu(self.latent_proj(z_cat))                 # (N, state_dim)
         pairs  = self._all_pairs_index(N, device)
         logits = self.decoder.score_pairs(h0, pairs) / self.tau + self.logit_bias
 
         probs  = torch.sigmoid(logits).cpu().numpy()
 
-        # ----- Bernoulli draw ---------------------------------------------------
-        import numpy as np, networkx as nx
         G = nx.Graph();  G.add_nodes_from(range(N))
         for (u, v), p in zip(pairs.t().cpu().numpy(), probs):
             if np.random.rand() < p:
                 G.add_edge(u, v)
 
-        # ----- keep only the largest connected component ------------------------
+        # keep only the largest connected component
         if G.number_of_edges():
             largest_nodes = max(nx.connected_components(G), key=len)
             G = G.subgraph(largest_nodes).copy()
