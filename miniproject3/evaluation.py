@@ -12,7 +12,7 @@ import random
 
 # ------------ CONFIG ---------------
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-WEIGHT_PATH    = "graph_vae_mpnn.pt" 
+WEIGHT_PATH    = "graph_vae_mpnn_v2.pt" 
 # ------------ data -----------------
 dataset = TUDataset(root="data", name="MUTAG")
 

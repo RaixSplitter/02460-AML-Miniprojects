@@ -1,12 +1,4 @@
-# graph_vae_mpnn.py – v6 with **graph‑level latent z_g**
-# -----------------------------------------------------------------------------
-#  Encoder  :
-#    * Node path – identical 6‑round MPNN producing μ_i, logσ²_i (dim=z_dim)
-#    * Graph path – mean‑pool node states → 2‑layer MLP → μ_g, logσ²_g (dim=g_dim)
-#  Latent   :  sample z_i  and z_g  →  concat  [z_i ‖ z_g]  (dim = z_dim+g_dim)
-#  Decoder  :  same MPNN edge decoder now fed the concatenated latent.
-#  Loss     :  recon + β ( KL_nodes + KL_graph )
-# -----------------------------------------------------------------------------
+
 from itertools import combinations
 from math import comb
 import torch
@@ -16,7 +8,7 @@ from torch_geometric.utils import negative_sampling
 import networkx as nx
 import numpy as np
 
-# -----------------------------------------------------------------------------
+
 class MPNNEncoder(nn.Module):
     """Message-passing encoder that returns both node- and graph-level params."""
 
@@ -72,7 +64,6 @@ class MPNNEncoder(nn.Module):
 
         return mu_node, logvar_node, mu_g, logvar_g
 
-# -----------------------------------------------------------------------------
 class EdgeDecoderMP(nn.Module):
     """MPNN edge decoder (unchanged except for exposed helpers)."""
 
